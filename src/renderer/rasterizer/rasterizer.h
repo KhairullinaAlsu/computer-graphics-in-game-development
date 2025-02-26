@@ -55,13 +55,10 @@ namespace cg::renderer
 			std::shared_ptr<resource<RT>> in_render_target,
 			std::shared_ptr<resource<float>> in_depth_buffer)
 	{
-		if (in_render_target) {
+		if (in_render_target)
 			render_target = in_render_target;
-		}
-
-		if (in_depth_buffer) {
+		if (in_depth_buffer)
 			depth_buffer = in_depth_buffer;
-		}
 	}
 
 	template<typename VB, typename RT>
@@ -75,16 +72,20 @@ namespace cg::renderer
 	inline void rasterizer<VB, RT>::clear_render_target(
 			const RT& in_clear_value, const float in_depth)
 	{
-		if (render_target) {
-			for (size_t i = 0; i < render_target->get_number_of_elements(); i++) {
+		if (render_target)
+		{
+			for (size_t i = 0; i < render_target->count(); i++)
+			{
 				render_target->item(i) = in_clear_value;
 			}
 		}
-		if (depth_buffer) {
-			for (size_t i = 0; i < depth_buffer->get_number_of_elements(); i++) {
+		if (depth_buffer)
+		{
+			for (size_t i = 0; i < depth_buffer->count(); i++)
+			{
 				depth_buffer->item(i) = in_depth;
 			}
-		}	
+		}
 	}
 
 	template<typename VB, typename RT>
@@ -105,14 +106,22 @@ namespace cg::renderer
 	inline void rasterizer<VB, RT>::draw(size_t num_vertexes, size_t vertex_offset)
 	{
 		size_t vertex_id = vertex_offset;
-		while (vertex_id < vertex_offset + num_vertexes) {
+		while (vertex_id < vertex_offset + num_vertexes)
+		{
 			std::vector<VB> vertices(3);
-			vertices[0] = vertex_buffer->item(index_buffer->item(vertex_id++));
-			vertices[1] = vertex_buffer->item(index_buffer->item(vertex_id++));
-			vertices[2] = vertex_buffer->item(index_buffer->item(vertex_id++));
-			for (auto& vertex: vertices) {
+			vertices[0] = vertex_buffer->item(
+					index_buffer->item(vertex_id++));
+			vertices[1] = vertex_buffer->item(
+					index_buffer->item(vertex_id++));
+			vertices[2] = vertex_buffer->item(
+					index_buffer->item(vertex_id++));
+
+			for (auto& vertex: vertices)
+			{
 				float4 coords{vertex.x, vertex.y, vertex.z, 1.f};
+
 				auto processed_vertex = vertex_shader(coords, vertex);
+
 				vertex.x = processed_vertex.first.x / processed_vertex.first.w;
 				vertex.y = processed_vertex.first.y / processed_vertex.first.w;
 				vertex.z = processed_vertex.first.z / processed_vertex.first.w;
@@ -121,51 +130,60 @@ namespace cg::renderer
 				vertex.y = (-vertex.y + 1.f) * height / 2.f;
 			}
 
-			float2 vertex_a = float2{vertices[0].x, vertices[0].y};
-			float2 vertex_b = float2{vertices[1].x, vertices[1].y};
-			float2 vertex_c = float2{vertices[2].x, vertices[2].y};
+			int2 vertex_a = int2(static_cast<int>(vertices[0].x), static_cast<int>(vertices[0].y));
+			int2 vertex_b = int2(static_cast<int>(vertices[1].x), static_cast<int>(vertices[1].y));
+			int2 vertex_c = int2(static_cast<int>(vertices[2].x), static_cast<int>(vertices[2].y));
 
-			float edge = edge_function(vertex_a, vertex_b, vertex_c);
+			float edge = static_cast<float>(edge_function(vertex_a, vertex_b, vertex_c));
 
-			float2 min_vertex = min(vertex_a, min(vertex_b, vertex_c));
-			float2 bounding_box_begin = round(clamp(
+			int2 min_vertex = min(vertex_a, min(vertex_b, vertex_c));
+			int2 bounding_box_begin = clamp(
 					min_vertex,
-					float2{0, 0},
-					float2{static_cast<float>(width - 1), static_cast<float>(height - 1)}));
+					int2(0, 0),
+					int2{static_cast<int>(width - 1),
+						   static_cast<int>(height - 1)});
 
-			float2 max_vertex = max(vertex_a, max(vertex_b, vertex_c));
-			float2 bounding_box_end = round(clamp(
+			int2 max_vertex = max(vertex_a, max(vertex_b, vertex_c));
+			int2 bounding_box_end = clamp(
 					max_vertex,
-					float2{0, 0},
-					float2{static_cast<float>(width - 1), static_cast<float>(height - 1)}));
+					int2(0, 0),
+					int2{static_cast<int>(width - 1),
+						   static_cast<int>(height - 1)});
 
-			for (float x = bounding_box_begin.x; x <= bounding_box_end.x; x++) {
-				for (float y = bounding_box_begin.y; y <= bounding_box_end.y; y++) {
-					float2 point{x, y};
-					float edge0 = edge_function(vertex_a, vertex_b, point);
-					float edge1 = edge_function(vertex_b, vertex_c, point);
-					float edge2 = edge_function(vertex_c, vertex_a, point);
+			for (int x = bounding_box_begin.x; x <= bounding_box_end.x; ++x)
+			{
+				for (int y = bounding_box_begin.y; y <= bounding_box_end.y; ++y)
+				{
+					int2 point(x, y);
+					int edge0 = edge_function(vertex_a, vertex_b, point);
+					int edge1 = edge_function(vertex_b, vertex_c, point);
+					int edge2 = edge_function(vertex_c, vertex_a, point);
 
-					if (edge0 >= 0.f && edge1 >= 0.f && edge2 >= 0.f) {
-						float u = edge1/edge;
-						float v = edge2/edge;
-						float w = edge0/edge;
-						float depth = u * vertices[0].z + v * vertices[1].z + w * vertices[2].z;
+					if (edge0 >= 0.f && edge1 >= 0.f && edge2 >= 0.f)
+					{
+						float u = edge1 / edge;
+						float v = edge2 / edge;
+						float w = edge0 / edge;
+						float depth = u * vertices[0].z +
+									  v * vertices[1].z +
+									  w * vertices[2].z;
 
 						size_t u_x = static_cast<size_t>(x);
 						size_t u_y = static_cast<size_t>(y);
 
-						if(depth_test(depth,u_x,u_y)) {
+						if (depth_test(depth, u_x, u_y))
+						{
 							auto pixel_result = pixel_shader(vertices[0], depth);
 							render_target->item(u_x, u_y) = RT::from_color(pixel_result);
-							if (depth_buffer) {
-								depth_buffer->item(u_x,u_y) = depth;
-							}
+							if (depth_buffer)
+								depth_buffer->item(u_x, u_y) = depth;
 						}
+
 					}
 				}
 			}
 		}
+		// TODO Lab: 1.06 Add `Depth test` stage to `draw` method of `cg::renderer::rasterizer`
 	}
 
 	template<typename VB, typename RT>

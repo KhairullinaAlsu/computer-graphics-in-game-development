@@ -154,7 +154,7 @@ namespace cg::renderer
 	inline void raytracer<VB, RT>::clear_render_target(
 			const RT& in_clear_value)
 	{
-		for (size_t i = 0; i < render_target->get_number_of_elements(); i++) {
+		for (size_t i = 0; i < render_target->count(); i++) {
 			render_target->item(i) = in_clear_value;
 			history->item(i) = float3 {0,0,0};
 		}
@@ -182,7 +182,7 @@ namespace cg::renderer
 			auto& vertex_buffer = vertex_buffers[shape_id];
 			size_t index_id = 0;
 			aabb<VB> aabb;
-			while (index_id < index_buffer->get_number_of_elements()) {
+			while (index_id < index_buffer->count()) {
 				triangle<VB> triangle (
 						vertex_buffer->item(index_buffer->item(index_id++)),
 						vertex_buffer->item(index_buffer->item(index_id++)),

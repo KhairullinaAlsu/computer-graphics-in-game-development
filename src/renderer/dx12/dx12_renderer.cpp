@@ -13,6 +13,7 @@ void cg::renderer::dx12_renderer::init()
 {
 	model = std::make_shared<cg::world::model>();
 	model->load_obj(settings->model_path);
+
 	camera = std::make_shared<cg::world::camera>();
 	camera->set_height(static_cast<float>(settings->height));
 	camera->set_width(static_cast<float>(settings->width));
@@ -26,12 +27,14 @@ void cg::renderer::dx12_renderer::init()
 	camera->set_angle_of_view(settings->camera_angle_of_view);
 	camera->set_z_near(settings->camera_z_near);
 	camera->set_z_far(settings->camera_z_far);
+
 	view_port = CD3DX12_VIEWPORT(0.f, 0.f,
 								 static_cast<float>(settings->width),
 								 static_cast<float>(settings->height));
 	scissor_rect = CD3DX12_RECT(0.f, 0.f,
 								static_cast<LONG>(settings->width),
 								static_cast<LONG>(settings->height));
+
 	load_pipeline();
 	load_assets();
 }
@@ -48,6 +51,7 @@ void cg::renderer::dx12_renderer::update()
 	std::chrono::duration<float> duration = now - current_time;
 	frame_duration = duration.count();
 	current_time = now;
+
 	cb.mwpMatrix = camera->get_dxm_mvp_matrix();
 	memcpy(constant_buffer_data_begin, &cb, sizeof(cb));
 }
@@ -55,11 +59,14 @@ void cg::renderer::dx12_renderer::update()
 void cg::renderer::dx12_renderer::render()
 {
 	populate_command_list();
+
 	ID3D12CommandList* command_lists[] = {command_list.Get()};
 	command_queue->ExecuteCommandLists(
 			_countof(command_lists),
 			command_lists);
+
 	THROW_IF_FAILED(swap_chain->Present(0, 0));
+
 	move_to_next_frame();
 }
 
@@ -113,6 +120,7 @@ void cg::renderer::dx12_renderer::create_swap_chain(ComPtr<IDXGIFactory4>& dxgi_
 	swap_chain_desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	swap_chain_desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
 	swap_chain_desc.SampleDesc.Count = 1;
+
 	ComPtr<IDXGISwapChain1> temp_swap_chain;
 	THROW_IF_FAILED(dxgi_factory->CreateSwapChainForHwnd(
 			command_queue.Get(),
@@ -121,9 +129,11 @@ void cg::renderer::dx12_renderer::create_swap_chain(ComPtr<IDXGIFactory4>& dxgi_
 			nullptr,
 			nullptr,
 			&temp_swap_chain));
+
 	dxgi_factory->MakeWindowAssociation(
 			cg::utils::window::get_hwnd(),
 			DXGI_MWA_NO_ALT_ENTER);
+
 	temp_swap_chain.As(&swap_chain);
 	frame_index = swap_chain->GetCurrentBackBufferIndex();
 }
@@ -191,6 +201,7 @@ void cg::renderer::dx12_renderer::create_root_signature(const D3D12_STATIC_SAMPL
 {
 	CD3DX12_ROOT_PARAMETER1 root_parameters[1];
 	CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
+
 	ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0,
 				   D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 	root_parameters[0].InitAsDescriptorTable(1,
@@ -205,7 +216,9 @@ void cg::renderer::dx12_renderer::create_root_signature(const D3D12_STATIC_SAMPL
 	{
 		rs_feature_data.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
 	}
+
 	D3D12_ROOT_SIGNATURE_FLAGS rs_flags = D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT;
+
 	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rs_desc;
 	rs_desc.Init_1_1(
 			_countof(root_parameters),
@@ -213,8 +226,10 @@ void cg::renderer::dx12_renderer::create_root_signature(const D3D12_STATIC_SAMPL
 			num_sampler_descriptors,
 			sampler_descriptors,
 			rs_flags);
+
 	ComPtr<ID3DBlob> signature;
 	ComPtr<ID3DBlob> error;
+
 	HRESULT res = D3DX12SerializeVersionedRootSignature(
 			&rs_desc,
 			rs_feature_data.HighestVersion,
@@ -225,6 +240,7 @@ void cg::renderer::dx12_renderer::create_root_signature(const D3D12_STATIC_SAMPL
 		OutputDebugStringA((char*) error->GetBufferPointer());
 		THROW_IF_FAILED(res);
 	}
+
 	THROW_IF_FAILED(device->CreateRootSignature(
 			0,
 			signature->GetBufferPointer(),
@@ -232,14 +248,14 @@ void cg::renderer::dx12_renderer::create_root_signature(const D3D12_STATIC_SAMPL
 			IID_PPV_ARGS(&root_signature)));
 }
 
-std::filesystem::path cg::renderer::dx12_renderer::get_shader_path(const std::string& shader_name)
+std::filesystem::path cg::renderer::dx12_renderer::get_shader_path()
 {
 	WCHAR buffer[MAX_PATH];
 	GetModuleFileName(nullptr, buffer, MAX_PATH);
-	return std::filesystem::path(buffer).parent_path() / shader_name;
+	return std::filesystem::path(buffer).parent_path() / get_shader_path();
 }
 
-ComPtr<ID3DBlob> cg::renderer::dx12_renderer::compile_shader(const std::filesystem::path& shader_path, const std::string& entrypoint, const std::string& target)
+ComPtr<ID3DBlob> cg::renderer::dx12_renderer::compile_shader(const std::string& entrypoint, const std::string& target)
 {
 	ComPtr<ID3DBlob> shader;
 	ComPtr<ID3DBlob> error;
@@ -248,7 +264,7 @@ ComPtr<ID3DBlob> cg::renderer::dx12_renderer::compile_shader(const std::filesyst
 	compile_flags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #endif
 	HRESULT res = D3DCompileFromFile(
-			shader_path.wstring().c_str(),
+			get_shader_path().wstring().c_str(),
 			nullptr,
 			nullptr,
 			entrypoint.c_str(),
@@ -265,16 +281,11 @@ ComPtr<ID3DBlob> cg::renderer::dx12_renderer::compile_shader(const std::filesyst
 	return shader;
 }
 
-void cg::renderer::dx12_renderer::create_pso(const std::string& shader_name)
+void cg::renderer::dx12_renderer::create_pso()
 {
-	ComPtr<ID3DBlob> vertex_shader = compile_shader(
-			get_shader_path(shader_name),
-			"VSMain",
-			"vs_5_0");
-	ComPtr<ID3DBlob> pixel_shader = compile_shader(
-			get_shader_path(shader_name),
-			"PSMain",
-			"ps_5_0");
+	ComPtr<ID3DBlob> vertex_shader = compile_shader("VSMain","vs_5_0");
+	ComPtr<ID3DBlob> pixel_shader = compile_shader("PSMain","ps_5_0");
+
 	D3D12_INPUT_ELEMENT_DESC input_descs[] = {
 			{"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,
 			 D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
@@ -288,6 +299,7 @@ void cg::renderer::dx12_renderer::create_pso(const std::string& shader_name)
 			 D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
 			{"COLOR", 2, DXGI_FORMAT_R32G32B32_FLOAT, 0, 56,
 			 D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}};
+
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC pso_desc{};
 	pso_desc.InputLayout = {input_descs, _countof(input_descs)};
 	pso_desc.pRootSignature = root_signature.Get();
@@ -304,6 +316,7 @@ void cg::renderer::dx12_renderer::create_pso(const std::string& shader_name)
 	pso_desc.NumRenderTargets = 1;
 	pso_desc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	pso_desc.SampleDesc.Count = 1;
+
 	THROW_IF_FAILED(device->CreateGraphicsPipelineState(
 			&pso_desc,
 			IID_PPV_ARGS(&pipeline_state)))
@@ -369,24 +382,29 @@ void cg::renderer::dx12_renderer::create_constant_buffer_view(const ComPtr<ID3D1
 	D3D12_CONSTANT_BUFFER_VIEW_DESC cbv_desc{};
 	cbv_desc.BufferLocation = buffer->GetGPUVirtualAddress();
 	cbv_desc.SizeInBytes = (sizeof(cb) + 255) & ~255;
+
 	device->CreateConstantBufferView(&cbv_desc, cpu_handler);
 }
 
 void cg::renderer::dx12_renderer::load_assets()
 {
 	create_root_signature(nullptr, 0);
-	create_pso("shaders.hlsl");
+	create_pso();
 	create_command_allocators();
 	create_command_list();
+
 	vertex_buffers.resize(model->get_vertex_buffers().size());
 	vertex_buffer_views.resize(model->get_vertex_buffers().size());
+
 	index_buffers.resize(model->get_index_buffers().size());
 	index_buffer_views.resize(model->get_index_buffers().size());
+
 	for (size_t i = 0; i < model->get_index_buffers().size(); i++)
 	{
+		// Vertex buffer
 		auto vertex_buffer_data = model->get_vertex_buffers()[i];
 		const UINT vertex_buffer_size = static_cast<UINT>(
-				vertex_buffer_data->size_bytes());
+				vertex_buffer_data->get_size_in_bytes());
 		std::wstring vertex_buffer_name(L"Vertex buffer ");
 		vertex_buffer_name += std::to_wstring(i);
 		create_resource_on_upload_heap(
@@ -399,9 +417,11 @@ void cg::renderer::dx12_renderer::load_assets()
 		vertex_buffer_views[i] = create_vertex_buffer_view(
 				vertex_buffers[i],
 				vertex_buffer_size);
+
+		// Index buffer
 		auto index_buffer_data = model->get_index_buffers()[i];
 		const UINT index_buffer_size = static_cast<UINT>(
-				index_buffer_data->size_bytes());
+				index_buffer_data->get_size_in_bytes());
 		std::wstring index_buffer_name(L"Index buffer ");
 		index_buffer_name += std::to_wstring(i);
 		create_resource_on_upload_heap(
@@ -415,6 +435,8 @@ void cg::renderer::dx12_renderer::load_assets()
 				index_buffers[i],
 				index_buffer_size);
 	}
+
+	// Constant buffer
 	std::wstring const_buffer_name(L"Constant buffer");
 	create_resource_on_upload_heap(
 			constant_buffer,
@@ -426,6 +448,7 @@ void cg::renderer::dx12_renderer::load_assets()
 	CD3DX12_RANGE read_range(0, 0);
 	THROW_IF_FAILED(constant_buffer->Map(0, &read_range,
 										 reinterpret_cast<void**>(&constant_buffer_data_begin)));
+
 	cbv_srv_heap.create_heap(
 			device,
 			D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
@@ -434,7 +457,10 @@ void cg::renderer::dx12_renderer::load_assets()
 	create_constant_buffer_view(
 			constant_buffer,
 			cbv_srv_heap.get_cpu_descriptor_handle(0));
+
 	THROW_IF_FAILED(command_list->Close());
+
+	// Create a fence
 	THROW_IF_FAILED(device->CreateFence(
 			0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&fence)));
 	fence_event = CreateEvent(nullptr, FALSE, FALSE, nullptr);
@@ -448,24 +474,31 @@ void cg::renderer::dx12_renderer::load_assets()
 
 void cg::renderer::dx12_renderer::populate_command_list()
 {
+	// Reset
 	THROW_IF_FAILED(command_allocators[frame_index]->Reset());
 	THROW_IF_FAILED(command_list->Reset(
 			command_allocators[frame_index].Get(),
 			pipeline_state.Get()));
+
+	// Initial state
 	command_list->SetGraphicsRootSignature(root_signature.Get());
 	ID3D12DescriptorHeap* heap[] = {cbv_srv_heap.get()};
 	command_list->SetDescriptorHeaps(_countof(heap), heap);
 	command_list->SetGraphicsRootDescriptorTable(
 			0, cbv_srv_heap.get_gpu_descriptor_handle(0));
+
 	command_list->RSSetViewports(1, &view_port);
 	command_list->RSSetScissorRects(1, &scissor_rect);
 	command_list->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
 	D3D12_RESOURCE_BARRIER begin_barriers[] = {
 			CD3DX12_RESOURCE_BARRIER::Transition(
 					render_targets[frame_index].Get(),
 					D3D12_RESOURCE_STATE_PRESENT,
 					D3D12_RESOURCE_STATE_RENDER_TARGET)};
 	command_list->ResourceBarrier(_countof(begin_barriers), begin_barriers);
+
+	// Drawing
 	command_list->OMSetRenderTargets(
 			1,
 			&rtv_heap.get_cpu_descriptor_handle(frame_index),
@@ -477,6 +510,7 @@ void cg::renderer::dx12_renderer::populate_command_list()
 			clear_color,
 			0,
 			nullptr);
+
 	for (size_t s = 0; s < model->get_index_buffers().size(); s++)
 	{
 		command_list->IASetVertexBuffers(0, 1, &vertex_buffer_views[s]);
@@ -485,12 +519,14 @@ void cg::renderer::dx12_renderer::populate_command_list()
 				static_cast<UINT>(model->get_index_buffers()[s]->count()),
 				1, 0, 0, 0);
 	}
+
 	D3D12_RESOURCE_BARRIER end_barriers[] = {
 			CD3DX12_RESOURCE_BARRIER::Transition(
 					render_targets[frame_index].Get(),
 					D3D12_RESOURCE_STATE_RENDER_TARGET,
 					D3D12_RESOURCE_STATE_PRESENT)};
 	command_list->ResourceBarrier(_countof(end_barriers), end_barriers);
+
 	THROW_IF_FAILED(command_list->Close());
 }
 
@@ -531,6 +567,7 @@ void cg::renderer::descriptor_heap::create_heap(ComPtr<ID3D12Device>& device, D3
 	heap_desc.NumDescriptors = number;
 	heap_desc.Type = type;
 	heap_desc.Flags = flags;
+
 	THROW_IF_FAILED(device->CreateDescriptorHeap(
 			&heap_desc,
 			IID_PPV_ARGS(&heap)));
